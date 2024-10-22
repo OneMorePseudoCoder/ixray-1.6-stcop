@@ -68,6 +68,8 @@ void UIEditLightAnim::Draw()
         if (ImGui::BeginChild("Left", ImVec2(0, 0), true))
         {
             m_Items->Draw();
+
+            IsContextMenu = m_Items->m_UseMenuEdit;
             if (!IsDocked)
                 IsDocked = ImGui::IsWindowDocked();
             if (!IsFocused)
@@ -264,7 +266,7 @@ void UIEditLightAnim::Update()
         {
             Form->BeginDraw();
             ImGui::PushStyleVar(ImGuiStyleVar_WindowMinSize, ImVec2(300, 600));
-            if (ImGui::Begin("LightAnim Editor", &Form->bOpen, ImGuiWindowFlags_NoDocking))
+            if (ImGui::Begin("LightAnim Editor", &Form->bOpen))
             {
                 Form->Draw();
             }
@@ -282,6 +284,11 @@ void UIEditLightAnim::Update()
 void UIEditLightAnim::Show()
 {
     if (Form == nullptr)Form = new UIEditLightAnim();
+}
+
+bool UIEditLightAnim::IsOpen()
+{
+    return Form && Form->bOpen;
 }
 
 void UIEditLightAnim::UpdateProperties()

@@ -3,6 +3,8 @@
 
 #include "../../utils/xrDXT/xrDXT.h"
 
+CContentView* GContentView = nullptr;
+
 CContentView::CContentView():
 	WatcherPtr(nullptr)
 {
@@ -81,10 +83,13 @@ void CContentView::Draw()
 	}
 
 	ImGui::End();
+
+	ThmPropWnd.Draw();
 }
 
 void CContentView::DrawHeader()
 {
+	BtnSize = (ViewMode == EViewMode::Tile) ? ImVec2(64.f, 64.f) : ImVec2(32.f, 32.f);
 	if (ImGui::Button("root"))
 	{
 		CurrentDir = RootDir;
@@ -157,39 +162,74 @@ void CContentView::DrawHeader()
 		DrawByPathLambda(CurrentDir);
 	}
 
+
 	int FindStartPosX = (int)ImGui::GetWindowSize().x;
-	if (FindStartPosX > 300)
+
+	float w = 0;
+
+	if (FindStartPosX > 400)
 	{
 		ImGui::SameLine();
 		int FindSizeX = FindStartPosX / 3.5f;
 		FindStartPosX -= FindSizeX;
 
 		ImGui::SetCursorPosX(FindStartPosX);
-		ImGui::SetNextItemWidth(FindSizeX - 35);
+		
+		w = FindSizeX - 35;
 	}
 	else
 	{
-		ImGui::SetNextItemWidth(FindStartPosX - 45);
+		w = FindStartPosX - 45;
 	}
+
+	IconData* IconPtr = &GetTexture("search");
+	ImVec2 IconSize{ 0,0 };
+
+	//Varian 1
+	/*if (IconPtr->Icon)
+	{
+		IconSize={ 16,16 };
+		ImGui::Image(IconPtr->Icon->pSurface, IconSize);
+		ImGui::SameLine();
+	}*/
+
+	ImGui::SetNextItemWidth(w - IconSize.x*1.5f);
 
 	if (ImGui::InputTextWithHint("##Search", "Search", FindStr, sizeof(FindStr)))
 	{
 		FindFile();
 	}
+
+	//Varian 2
+	if (IconPtr->Icon)
+	{
+		IconSize = { 12,12 };
+
+		ImGui::SameLine();
+		ImVec2 cursorPos = ImGui::GetCursorPos();
+		ImGui::SetCursorPos(ImVec2(cursorPos.x - IconSize.x-10.f, cursorPos.y+(IconSize.y/4)));
+
+		ImGui::Image(IconPtr->Icon->pSurface, IconSize);
+	}
+
 	ImGui::SameLine();
 
 	if (ImGui::BeginPopupContextItem("MenuCBPpp"))
 	{
+		if (ImGui::Checkbox("Show THM", &IsThmMode) && !IsSpawnElement)
+		{
+			RescanDirectory();
+		}
+		ImGui::Separator();
+
 		if (ImGui::BeginMenu("View mode"))
 		{
 			if (ImGui::MenuItem("Tile"))
 			{
 				ViewMode = EViewMode::Tile;
-				BtnSize = { 64, 64 };
 			}
 			if (ImGui::MenuItem("List"))
 			{
-				BtnSize = { 32, 32 };
 				ViewMode = EViewMode::List;
 			}
 
@@ -226,7 +266,7 @@ void CContentView::FindFile()
 					continue;
 
 				const xr_string& FName = file.path().filename().string().data();
-				if (FName.Contains(ParseStr) && !FName.ends_with(".thm"))
+				if (FName.Contains(ParseStr) && CheckFile(FName))
 				{
 					Files.push_back({ file, false });
 				}
@@ -435,7 +475,7 @@ void CContentView::DrawOtherDir(size_t& HorBtnIter, const size_t IterCount, xr_s
 		Files.clear();
 	}
 
-	for (const FileOptData& FilePath : Files)
+	for (FileOptData FilePath : Files)
 	{
 		if (FilePath.IsDir)
 		{
@@ -454,7 +494,12 @@ void CContentView::DrawOtherDir(size_t& HorBtnIter, const size_t IterCount, xr_s
 		{
 			if (DrawItem(FilePath, HorBtnIter, IterCount))
 			{
-				if (FilePath.File.extension() == ".tga")
+				if (FilePath.File.extension() == ".thm")
+				{
+					ThmPropWnd.Load(FilePath.File);
+					ThmPropWnd.Show();
+				}
+				else if (FilePath.File.extension() == ".tga")
 				{
 					string_path fn = {};
 					FS.update_path(fn, _textures_, "");
@@ -561,6 +606,8 @@ void CContentView::Init()
 	Icons["backup"] = {EDevice->Resources->_CreateTexture("ed\\content_browser\\backup"),	true};
 	Icons["env_mod"]= {EDevice->Resources->_CreateTexture("ed\\content_browser\\env_mod"),	true};
 
+	Icons["search"]= {EDevice->Resources->_CreateTexture("ed\\content_browser\\search"),	false};
+
 	MenuIcon = EDevice->Resources->_CreateTexture("ed\\bar\\menu");
 }
 
@@ -598,6 +645,9 @@ bool CContentView::DrawItemByList(const FileOptData& InitFileName, size_t& HorBt
 		if (!IconPtr->Icon)
 			return false;
 
+		if (FilePath == CopyObjectPath && IsCutting)
+			IconColor.w = 0.3;
+
 		OutValue = ImGui::ImageButton
 		(
 			FileName.c_str(),
@@ -607,7 +657,12 @@ bool CContentView::DrawItemByList(const FileOptData& InitFileName, size_t& HorBt
 		);
 	}
 
-	DrawItemHelper(FilePath, FileName, InitFileName, IconPtr);
+	ImVec4 TextColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
+
+	bool RenameThisItem = RenameObject.Active && RenameObject.Path == FilePath;
+
+	if (!RenameThisItem && DrawItemHelper(FilePath, FileName, InitFileName, IconPtr))
+		TextColor.w = 0.3;
 
 	ImVec2 NextCursorPos = ImGui::GetCursorPos();
 	ImGui::SameLine(); 
@@ -617,7 +672,45 @@ bool CContentView::DrawItemByList(const FileOptData& InitFileName, size_t& HorBt
 	StartCursorPos.y -= (TextHeight + 2) ;
 	ImGui::SetCursorPos(StartCursorPos);
 
-	ImGui::Text(Platform::ANSI_TO_UTF8(FileName).c_str());
+	if (RenameObject.Path == FilePath)
+	{
+		if (RenameObject.Active)
+		{
+			if (RenameObject.SetText)
+			{
+				RenameObject.SetText = false;
+				RenameObject.RenameBuf = Platform::ANSI_TO_UTF8(FileName).c_str();
+				ImGui::SetKeyboardFocusHere();
+			}
+
+			ImGuiIO& io = ImGui::GetIO();
+
+			if (ImGui::InputText("##ren", RenameObject.RenameBuf.data(), 255, ImGuiInputTextFlags_EnterReturnsTrue))
+				RenameObject.Active = false;
+			
+			if (io.KeysDown[ImGuiKey_Escape])
+				RenameActionEnd();
+
+			RenameObject.Focus = ImGui::IsItemHovered();
+		}
+		else
+		{
+			if (strcmp(Platform::ANSI_TO_UTF8(FileName).c_str(), RenameObject.RenameBuf.c_str()))
+				RenameAction(FilePath, RenameObject.RenameBuf.c_str());
+
+			RenameActionEnd();
+		}
+	}
+	else
+	{
+		ImGui::TextColored(TextColor, Platform::ANSI_TO_UTF8(FileName).c_str());
+
+		if (ImGui::IsMouseDoubleClicked(0) && ImGui::IsItemHovered())
+		{
+			if (FilePath.xstring() != ".." && !FilePath.parent_path().empty() && !IsSpawnElement)
+				RenameActionActivate(FilePath);
+		}
+	}
 	
 	StartCursorPos.y += TextHeight + 2.f;
 	ImGui::SetCursorPos(StartCursorPos);
@@ -625,75 +718,76 @@ bool CContentView::DrawItemByList(const FileOptData& InitFileName, size_t& HorBt
 	ImVec4 TooltipTextColor = ImGui::GetStyle().Colors[ImGuiCol_Text];
 	TooltipTextColor.w *= 0.5f;
 
-	if (InitFileName.IsDir)
 	{
-		ImGui::TextColored(TooltipTextColor, "Directory");
-	}
-	else if (FileName.ends_with(".dds"))
-	{
-		ImGui::TextColored(TooltipTextColor, "Texture Asset");
-	}
-	else if (FileName.ends_with(".tga"))
-	{
-		ImGui::TextColored(TooltipTextColor, "Raw Texture Asset");
-	}
-	else if (FileName.ends_with(".png"))
-	{
-		ImGui::TextColored(TooltipTextColor, "Image");
-	}
-	else if (FileName.ends_with(".object"))
-	{
-		ImGui::TextColored(TooltipTextColor, "Object Asset");
-	}
-	else if (FileName.ends_with(".group"))
-	{
-		ImGui::TextColored(TooltipTextColor, "Group object Asset");
-	}
-	else if (FileName.ends_with(".ogf"))
-	{
-		ImGui::TextColored(TooltipTextColor, "Object");
-	}
-	else if (FileName.ends_with(".wav"))
-	{
-		ImGui::TextColored(TooltipTextColor, "Raw Sound");
-	}
-	else if (FileName.ends_with(".ogg"))
-	{
-		ImGui::TextColored(TooltipTextColor, "Sound Asset");
-	}
-	else if (FileName.ends_with(".ise"))
-	{
-		ImGui::TextColored(TooltipTextColor, "Spawn Component");
-	}
-	else if (FileName.ends_with(".skl"))
-	{
-		ImGui::TextColored(TooltipTextColor, "Raw Single Animation Asset");
-	}
-	else if (FileName.ends_with(".skls"))
-	{
-		ImGui::TextColored(TooltipTextColor, "Raw Animations Asset");
-	}
-	else if (FileName.ends_with(".omf"))
-	{
-		ImGui::TextColored(TooltipTextColor, "Animations Asset");
-	}
-	else if (FileName.ends_with(".ltx"))
-	{
-		xr_string PathName = FilePath;
-		if (PathName.Contains("scripts\\"))
+		if (InitFileName.IsDir)
 		{
-			ImGui::TextColored(TooltipTextColor, "Logic Preference");
+			ImGui::TextColored(TooltipTextColor, "Directory");
 		}
-		else
+		else if (FileName.ends_with(".dds"))
 		{
-			ImGui::TextColored(TooltipTextColor, "Config");
+			ImGui::TextColored(TooltipTextColor, "Texture Asset");
+		}
+		else if (FileName.ends_with(".tga"))
+		{
+			ImGui::TextColored(TooltipTextColor, "Raw Texture Asset");
+		}
+		else if (FileName.ends_with(".png"))
+		{
+			ImGui::TextColored(TooltipTextColor, "Image");
+		}
+		else if (FileName.ends_with(".object"))
+		{
+			ImGui::TextColored(TooltipTextColor, "Object Asset");
+		}
+		else if (FileName.ends_with(".group"))
+		{
+			ImGui::TextColored(TooltipTextColor, "Group object Asset");
+		}
+		else if (FileName.ends_with(".ogf"))
+		{
+			ImGui::TextColored(TooltipTextColor, "Object");
+		}
+		else if (FileName.ends_with(".wav"))
+		{
+			ImGui::TextColored(TooltipTextColor, "Raw Sound");
+		}
+		else if (FileName.ends_with(".ogg"))
+		{
+			ImGui::TextColored(TooltipTextColor, "Sound Asset");
+		}
+		else if (FileName.ends_with(".ise"))
+		{
+			ImGui::TextColored(TooltipTextColor, "Spawn Component");
+		}
+		else if (FileName.ends_with(".skl"))
+		{
+			ImGui::TextColored(TooltipTextColor, "Raw Single Animation Asset");
+		}
+		else if (FileName.ends_with(".skls"))
+		{
+			ImGui::TextColored(TooltipTextColor, "Raw Animations Asset");
+		}
+		else if (FileName.ends_with(".omf"))
+		{
+			ImGui::TextColored(TooltipTextColor, "Animations Asset");
+		}
+		else if (FileName.ends_with(".ltx"))
+		{
+			xr_string PathName = FilePath;
+			if (PathName.Contains("scripts\\"))
+			{
+				ImGui::TextColored(TooltipTextColor, "Logic Preference");
+			}
+			else
+			{
+				ImGui::TextColored(TooltipTextColor, "Config");
+			}
+		}
+		else if (FileName.ends_with(".script"))
+		{
+			ImGui::TextColored(TooltipTextColor, "Lua Script");
 		}
 	}
-	else if (FileName.ends_with(".script"))
-	{
-		ImGui::TextColored(TooltipTextColor, "Lua Script");
-	}
-
 	ImGui::SetCursorPos(NextCursorPos);
 	ImGui::Separator();
 
@@ -712,6 +806,9 @@ void CContentView::AcceptDragDropAction(xr_path& FilePath)
 
 	if (ImData == nullptr)
 		ImData = ImGui::AcceptDragDropPayload("FLDR");
+
+	if (ImData == nullptr)
+		ImData = ImGui::AcceptDragDropPayload("OTHR");
 
 	if (ImData != nullptr)
 	{
@@ -752,13 +849,13 @@ bool CContentView::BeginDragDropAction(xr_path& FilePath, xr_string& FileName, c
 		xr_string Extension = FilePath.extension().string().c_str();
 		WeCanDrag = Extension == ".object" || Extension == ".group" || Extension == ".ise";
 
+		if (!ImGui::BeginDragDropSource())
+		{
+			return false;
+		}
+
 		if (WeCanDrag)
 		{
-			if (!ImGui::BeginDragDropSource())
-			{
-				return false;
-			}
-
 			if (IsSpawnElement || FilePath.xstring().ends_with(".ise"))
 			{
 				if (InitFileName.ISESect.size() > 0)
@@ -775,8 +872,8 @@ bool CContentView::BeginDragDropAction(xr_path& FilePath, xr_string& FileName, c
 		}
 		else 
 		{
-			//ImGui::SetDragDropPayload("OTHR", &Data, sizeof(DragDropData));
-			return false;
+			Data.FileName = FilePath;
+			ImGui::SetDragDropPayload("OTHR", &Data, sizeof(DragDropData));
 		}
 	}
 	else
@@ -909,7 +1006,7 @@ bool CContentView::DrawItemByTile(const FileOptData& InitFileName, size_t& HorBt
 			if (RenameObject.SetText)
 			{
 				RenameObject.SetText = false;
-				RenameObject.RenameBuf = LabelText;
+				RenameObject.RenameBuf = Platform::ANSI_TO_UTF8(LabelText);
 				ImGui::SetKeyboardFocusHere();
 			}
 
@@ -918,21 +1015,16 @@ bool CContentView::DrawItemByTile(const FileOptData& InitFileName, size_t& HorBt
 			ImGui::SetCursorPosX(CursorPos.x);
 			ImGui::SetNextItemWidth(BtnSize.x + 10);
 			if (ImGui::InputText("##ren", RenameObject.RenameBuf.data(), 255,ImGuiInputTextFlags_EnterReturnsTrue))
-			{
 				RenameObject.Active = false;
-			}
 			 
-			if (io.KeysDown[ImGuiKey_Escape]) {
+			if (io.KeysDown[ImGuiKey_Escape])
 				RenameActionEnd();
-			}
 
 			RenameObject.Focus = ImGui::IsItemHovered();
 		}
 		else 
 		{
-			
-			bool c = strcmp(LabelText.c_str(), RenameObject.RenameBuf.c_str());
-			if (c) 
+			if (strcmp(Platform::ANSI_TO_UTF8(LabelText).c_str(), RenameObject.RenameBuf.c_str()))
 				RenameAction(FilePath, RenameObject.RenameBuf.c_str());
 			
 			RenameActionEnd();
@@ -957,7 +1049,6 @@ bool CContentView::DrawItemByTile(const FileOptData& InitFileName, size_t& HorBt
 			RenameActionActivate(FilePath);
 		}
 	}
-	//}
 
 	InvalidateLambda();
 	return OutValue;
@@ -977,7 +1068,7 @@ bool CContentView::Contains()
 
 bool CContentView::CheckFile(const xr_path& File) const
 {
-	bool TestTHM = File.has_extension() && File.extension().string() != ".thm";
+	bool TestTHM = IsThmMode || (File.has_extension() && File.extension().string() != ".thm");
 	bool TestWinTrash = File.xfilename() != "desktop.ini";
 
 	return TestTHM && TestWinTrash;
@@ -1038,7 +1129,7 @@ bool CContentView::DrawContext(const xr_path& Path)
 		ImGui::Separator();
 	}
 
-	if (!ShowOpen) //Actions are temporarily unavailable for levels. The logic is not worked out
+	//if (!ShowOpen) //Actions are temporarily unavailable for levels. The logic is not worked out
 	{
 		if (ImGui::MenuItem("Cut"))
 		{
