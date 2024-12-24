@@ -183,6 +183,7 @@ public:
 	virtual void						HitSignal		(float P, Fvector &vLocalDir,	CObject* who, s16 element);
 			void						HitSector		(CObject* who, CObject* weapon);
 			void						HitMark			(float P, Fvector dir,			CObject* who, s16 element, Fvector position_in_bone_space, float impulse,  ALife::EHitType hit_type);
+	virtual void						FootStepCallback(float power, bool b_play, bool b_on_ground, bool b_hud_view);
 
 			void						Feel_Grenade_Update( float rad );
 
@@ -203,6 +204,8 @@ public:
 
 	//свойства артефактов
 	virtual void		UpdateArtefactsOnBeltAndOutfit();
+	void				UpdateConditionArtefacts();
+	void				HitArtefactsCondition(SHit& hit);
 			float		HitArtefactsOnBelt		(float hit_power, ALife::EHitType hit_type);
 			float		GetProtection_ArtefactsOnBelt(ALife::EHitType hit_type);
 
@@ -395,7 +398,7 @@ public:
 	void					g_sv_Orientate			(u32 mstate_rl, float dt);
 	void					g_Orientate				(u32 mstate_rl, float dt);
 	bool					g_LadderOrient			() ;
-//	void					UpdateMotionIcon		(u32 mstate_rl);
+	void					UpdateMotionIcon		(u32 mstate_rl);
 
 	void					SetMovementState		(const ACTOR_DEFS::EMovementStates& state, const ACTOR_DEFS::EMoveCommand& mask, bool status);
 	u32						GetMovementState		(const ACTOR_DEFS::EMovementStates& state) const;

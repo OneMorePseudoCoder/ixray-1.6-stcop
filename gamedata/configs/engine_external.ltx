@@ -1,9 +1,13 @@
 [general]
 title = st_ixray_title ; Mod name
+engine_mode = cop ; Engine mode. Supported values: cop (Call of Pripyat), la (Lost Alpha: Director's Cut)
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Engine features
 [ui]
 HQIcons = false
 DisableCharacterInfo = false
+DisableInventoryGrid = false ; Uses ui\ui_grid_alt.dds instead of ui\ui_grid.dds
 
 [physics]
 DeadBodyRagdoll = false
@@ -16,14 +20,26 @@ EnableNPCLookAtActor = false
 EnableBlockSprintInReload = true
 EnableAutoreload = false
 EnableMonstersInventory = true
-EnableWeaponInertion = false ;Shoker Mod Style
-EnableWeaponCollision = false ;Shoker Mod Style
-
-[player_hud]
-;PlayerHudOmfAdditional = dynamics\weapons\hud_hands_animation\*.omf
+EnableWeaponInertion = false            ; Shoker Mod Style
+EnableWeaponCollision = false           ; Shoker Mod Style
+EnableArtefactDegradation = false
+DisableSprintWhileOverweight = false
+EnableActorStepWallmarks = false        ; AIW Style
 
 [render]
 DisableLoadScreenTips = false
 
 [environment]
 ReadSunConfig = false
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Extended sections
+
+[player_hud]
+;PlayerHudOmfAdditional = dynamics\weapons\hud_hands_animation\*.omf ; Place your omf file pathes 
+
+; Need [gameplay]:EnableActorStepWallmarks
+[step_wallmark] 
+materials = earth, test1    ; Material names
+left_mark = l_foot          ; left foot wallmark section
+right_mark = r_foot         ; right foot wallmark section
